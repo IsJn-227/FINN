@@ -1,0 +1,12 @@
+data/
+.env
+.env.*
+!.env.example
+.venv/
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+finn_m2/
+finn_m2.zip
