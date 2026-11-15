@@ -1,4 +1,4 @@
-"""SQLite persistence for FINN. Schema v3."""
+"""SQLite persistence for FINN. Schema v4 (v3 + announcements)."""
 from __future__ import annotations
 
 import math
@@ -11,7 +11,7 @@ from portfolio import PORTFOLIO
 
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = ROOT / "data" / "finn.sqlite3"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS portfolio (
@@ -59,6 +59,22 @@ CREATE TABLE IF NOT EXISTS alerts (
     UNIQUE (symbol, session_date, kind)
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_session ON alerts(session_date DESC, symbol);
+CREATE TABLE IF NOT EXISTS announcements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL REFERENCES portfolio(symbol),
+    source TEXT NOT NULL DEFAULT 'nse',
+    source_id TEXT NOT NULL,
+    announced_at TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    description TEXT,
+    attachment_url TEXT,
+    category TEXT NOT NULL,
+    materiality TEXT NOT NULL CHECK (materiality IN ('high', 'medium', 'low')),
+    matched_rule TEXT NOT NULL,
+    ingested_at TEXT NOT NULL,
+    UNIQUE (symbol, source, source_id)
+);
+CREATE INDEX IF NOT EXISTS idx_announcements_time ON announcements(announced_at DESC, symbol);
 """
 
 EXPECTED_COLUMNS = {
@@ -70,7 +86,12 @@ EXPECTED_COLUMNS = {
     "session_checks": {"symbol", "session_date", "check_name", "completed_at"},
     "alerts": {"id", "symbol", "session_date", "kind", "observed", "threshold",
                "evidence", "created_at"},
+    "announcements": {"id", "symbol", "source", "source_id", "announced_at", "subject",
+                      "description", "attachment_url", "category", "materiality",
+                      "matched_rule", "ingested_at"},
 }
+V3_TABLES = {"portfolio", "thresholds", "daily_bars", "evaluated_sessions",
+             "session_checks", "alerts"}
 
 
 def _open(db_path) -> sqlite3.Connection:
@@ -130,10 +151,12 @@ def inspect_db(db_path=DB_PATH) -> dict:
         }
 
 
-def _schema_problems(conn):
+def _schema_problems(conn, tables=None):
     problems = []
     have = _table_names(conn)
     for table, cols in EXPECTED_COLUMNS.items():
+        if tables is not None and table not in tables:
+            continue
         if table not in have:
             problems.append(f"missing table {table}")
             continue
@@ -147,7 +170,14 @@ def initialize(db_path=DB_PATH, symbols=PORTFOLIO):
     """Create or validate the schema. Never overwrites or deletes an existing database."""
     with session(db_path) as conn:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
-        if _table_names(conn) and version != SCHEMA_VERSION:
+        if _table_names(conn) and version == 3:
+            # Additive v3 -> v4 migration: only if the v3 schema is exactly intact.
+            # It only creates the announcements table; existing data is not touched.
+            v3_problems = _schema_problems(conn, V3_TABLES)
+            if v3_problems or "announcements" in _table_names(conn):
+                raise RuntimeError(f"{db_path} looks like v3 but is not a clean v3 schema "
+                                   f"({v3_problems}). Left untouched; rename it to migrate.")
+        elif _table_names(conn) and version != SCHEMA_VERSION:
             raise RuntimeError(
                 f"{db_path} has an incompatible schema (user_version={version}, "
                 f"expected {SCHEMA_VERSION}). It was left untouched; rename it to migrate.")

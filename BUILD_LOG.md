@@ -1,4 +1,4 @@
-﻿# FINN — Build Log
+# FINN — Build Log
 
 ## Milestone 1: Source Probe
 
@@ -97,3 +97,24 @@ Status: Locally verified
 
 ### Milestone 2 conclusion
 The portfolio monitoring and alert backend has been implemented and locally verified.
+
+## Milestone 3: Corporate Announcements Ingestion
+
+Status: Implemented, unit-tested on Windows, and verified against live NSE data.
+### Implementation
+- Added `sources/nse_records.py` (raw fresh NSE records; `sources/nse.py` unchanged).
+- Added `announcements.py`, `materiality.py`; added `get_recent_announcements()` to `today.py`.
+- Database schema v4: new `announcements` table, unique on (symbol, source, source_id). Additive v3 to v4 migration, refused if v3 is not exactly intact.
+- `run_ingest.py --announcements` runs live announcement ingestion.
+- Uses `ON CONFLICT DO NOTHING` rather than `INSERT OR IGNORE`, because OR IGNORE would also silently swallow CHECK/NOT NULL violations (found by a test).
+
+### Verification
+- 31 new announcement tests; full Windows regression suite: 81/81 passing.
+- Live NSE announcement ingestion completed for all 20 portfolio symbols.
+- SQLite contains 1,665 announcements: 161 high, 529 medium, 975 low.
+- Repeat ingestion correctly identified existing records as duplicates.
+- Database schema v4 is compatible; announcement feed is read-only.
+### Known limitations
+- Materiality is keyword rules only and will misclassify some announcements.
+- Announcement times are assumed IST.
+- No PDF download, results extraction, Gemini or pull-mode yet.

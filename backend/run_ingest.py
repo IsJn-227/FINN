@@ -17,6 +17,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--inspect", action="store_true")
     parser.add_argument("--include-extra", action="store_true")
+    parser.add_argument("--announcements", action="store_true",
+                        help="ingest NSE corporate announcements live instead of prices")
     args = parser.parse_args()
 
     print("DB:", DB_PATH)
@@ -24,9 +26,22 @@ def main():
     print(json.dumps(state, indent=2))
     if args.inspect:
         return
-    if state.get("exists") and not state.get("compatible"):
-        raise SystemExit("Existing database has an incompatible schema. Not touching it. "
+    if state.get("exists") and not state.get("compatible") and state.get("user_version") != 3:
+        raise SystemExit("Existing database has an incompatible schema (a clean v3 DB is migrated automatically). Not touching it. "
                          "Rename it yourself (Move-Item) and re-run.")
+
+    if args.announcements:
+        from announcements import ingest_announcements
+        from sources.nse_records import fetch_records
+        from today import get_recent_announcements
+        syms = list(PORTFOLIO) + (list(EXTRA_RESEARCH) if args.include_extra else [])
+        results = ingest_announcements(syms, fetch_records, pause=0.5)
+        print("========== ANNOUNCEMENT INGESTION ==========")
+        print(json.dumps(results, indent=2, default=str))
+        print("\n========== LATEST HIGH/MEDIUM ANNOUNCEMENTS ==========")
+        for a in get_recent_announcements(15, min_materiality="medium"):
+            print(a["announced_at"], a["symbol"], a["materiality"], a["category"], "|", a["subject"])
+        return
 
     from sources.yahoo_history import fetch_history      # imported late: network code
     symbols = list(PORTFOLIO) + (list(EXTRA_RESEARCH) if args.include_extra else [])

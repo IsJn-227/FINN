@@ -180,6 +180,18 @@ These are local development results, not production deployment claims.
 
 
 
+\## Milestone 3: Announcements Ingestion (offline-tested; live run pending)
+
+- `sources/nse_records.py`: fresh raw NSE records, reusing `nse._download` and the existing cache payload shape.
+- `announcements.py`: normalisation, deterministic dedupe key (`seq_id`, else SHA-256 fallback), SQLite persistence.
+- `materiality.py`: transparent keyword rules (high/medium/low + category + matched rule). This is keyword matching, not an LLM and not a full materiality judgement.
+- `today.get_recent_announcements()`: read-only feed query.
+- Schema v4 adds an `announcements` table; a clean v3 database migrates additively, anything else is refused untouched.
+- Run: `python run_ingest.py --announcements` (live, from `backend`).
+- Only verified live fetches are stored; cached or stale data is never ingested.
+
+Not yet implemented: PDF download, results extraction, management biographies, Gemini, pull-mode research, frontend.
+
 \## Current Limitations
 
 
@@ -190,7 +202,7 @@ This repository currently contains the backend prototype. A completed mobile fro
 
 Remaining work includes:
 
-\- Persistent corporate-announcement ingestion and materiality classification.
+- Improved announcement materiality classification and PDF extraction (live NSE ingestion is verified; see Milestone 3).
 
 \- Financial results extraction (Revenue, EBITDA, PBT and PAT).
 
